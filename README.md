@@ -175,7 +175,7 @@ Assets/
 │   └── Grass/
 │       └── MAT_Grass.mat            ← Shader: Custom/GrassBlade
 ├── Rendering/
-│   ├── URP-Renderer.asset           ← URP Renderer Data with PixelRendererFeature added
+│   ├── PC_Renderer.asset           ← URP Renderer Data with PixelRendererFeature added
 │   └── RenderFeatures/
 │       ├── PixelRendererFeature.cs
 │       └── OutlineRendererFeature.cs  ← Standalone version (not used in 5-pass pipeline)
