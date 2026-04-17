@@ -358,7 +358,7 @@ This project was built by studying and adapting techniques from multiple sources
 If this project helped you, consider:
 - ⭐ Starring the repository
 - 🎮 Checking out the [itch.io demo](https://bababuyyyy.itch.io/unity-isometric-pixel-art-shader-demo) (pay-what-you-want)
-- ☕ [Buy me a coffee](https://www.buymeacoffee.com/bababuyyyy)
+- ☕ [Buy me a coffee](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=danilolima.se@hotmail.com)
 
 ---
 
