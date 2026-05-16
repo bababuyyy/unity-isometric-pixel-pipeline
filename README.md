@@ -12,6 +12,7 @@ https://github.com/user-attachments/assets/2ce64edf-1cb1-42fd-8b4b-039c94fd1b00
 - [How It Works](#how-it-works)
 - [The 5-Pass Pipeline](#the-5-pass-pipeline)
 - [Shaders](#shaders)
+- [Day/Night Cycle](#daynight-cycle)
 - [Pixel-Perfect Panning](#pixel-perfect-panning)
 - [Why Not PBR?](#why-not-pbr)
 - [Requirements](#requirements)
@@ -114,6 +115,64 @@ Upscales from internal resolution to screen resolution.
 
 ---
 
+## Day/Night Cycle
+
+The cycle is managed by two scripts with separate responsibilities.
+
+**`DayNightCycleManager`** — single source of truth for time. Controls sun/moon orbit rotation, light intensity and color via dot product, global ambient, and cloud shadow direction. Sets GPU globals directly via `Shader.SetGlobalColor`, `Shader.SetGlobalVector`, and `Shader.SetGlobalFloat`.
+
+**`CloudShadowManager`** — manages cloud visual parameters (scale, contrast, threshold, scroll direction). Does not set `_CloudSpeed` or `_CloudLightDirection` — those are owned by `DayNightCycleManager` to avoid a race condition between scripts. Zero inverse coupling.
+
+### How intensity works
+
+Light intensity is derived from geometry, not time:
+
+```csharp
+float sunDotProduct = Mathf.Clamp01(
+    Vector3.Dot(sunLight.transform.forward, Vector3.down)
+);
+float lightIntensity = lightIntensityCurve.Evaluate(sunDotProduct);
+
+sunLight.intensity  = Mathf.Lerp(0f, maxSunIntensity, lightIntensity);
+moonLight.intensity = Mathf.Lerp(maxMoonIntensity, 0f, lightIntensity);
+```
+
+The moon is automatically the inverse of the sun — no extra logic required.
+
+### Why cloud shadow direction is fixed
+
+Using a dynamic `_CloudLightDirection` driven by the sun angle causes shadow compression and stretching at low sun angles — mathematically correct, visually wrong for pixel art. The direction is a fixed `Vector3` in the Inspector, independent of sun angle.
+
+### Cloud speed synced with cycle duration
+
+```csharp
+float scaledSpeed = isTimePassing
+    ? cloudShadowManager.cloudSpeed / dayDurationInSeconds
+    : 0f;
+Shader.SetGlobalFloat(CloudSpeedId, scaledSpeed);
+```
+
+Adjust only `cloudSpeed` as a base value — the system scales automatically with cycle duration.
+
+### Inspector Parameters
+
+| Parameter | Recommended | Description |
+|---|---|---|
+| `sunriseTime` | 6 | Sunrise hour (0–24) |
+| `sunsetTime` | 18 | Sunset hour (0–24) |
+| `orbitAxisY` | 45 | Aligns sun arc with isometric camera |
+| `maxSunIntensity` | 1.2 | Peak sun intensity |
+| `maxMoonIntensity` | 0.2 | Peak moon intensity |
+| `cloudShadowDirection` | (0.2, -1, 0.2) | Fixed cloud shadow direction |
+| `dayDurationInSeconds` | 840 | Full cycle duration in real seconds |
+
+**Recommended gradients** (evaluated by dot product):
+- `sunColor`: `#FF6619` → `#FFF2CC`
+- `moonColor`: `#000000` → `#99B3FF`
+- `ambientColor`: `#1A1A2E` → `#262633`
+
+---
+
 ## Pixel-Perfect Panning
 
 Moving a camera through a 3D scene at low resolution causes **pixel creep** — pixels appear to swim and jitter because the camera position doesn't align with the texel grid.
@@ -182,6 +241,7 @@ Assets/
 │       └── OutlineRendererFeature.cs ← Standalone version (not used in 5-pass pipeline)
 ├── Scripts/
 │   └── Systems/
+│       ├── DayNightCycleManager.cs
 │       ├── CloudShadowManager.cs
 │       ├── GrassSpawner.cs
 │       ├── IsometricCameraController.cs
@@ -211,8 +271,9 @@ How the demo scene is organized. Use this as a guide when building your own scen
 ```
 Scene
 ├── Directional Light             ← Main sun light
+├── Moon Light                    ← Secondary directional light (DayNightCycleManager)
 ├── Global Volume                 ← URP post-processing (SSAO disabled)
-├── EnvironmentManager            ← CloudShadowManager.cs
+├── EnvironmentManager            ← DayNightCycleManager.cs + CloudShadowManager.cs
 ├── GrassManager                  ← GrassSpawner.cs
 ├── Plane                         ← Terrain with ToonLit material
 ├── PlayerPlaceholder             ← Follow target for the camera
@@ -226,8 +287,9 @@ Scene
 
 | Script | GameObject | Fields to Assign |
 |--------|-----------|------------------|
+| DayNightCycleManager | EnvironmentManager | Sun Light, Moon Light, Cloud Shadow Manager reference |
 | IsometricCameraController | Camera Pivot | Target → PlayerPlaceholder, Pixel Renderer Feature → PixelRendererFeature asset |
-| CloudShadowManager | EnvironmentManager | Light → Directional Light, Cloud Noise → CloudNoise_v5.png |
+| CloudShadowManager | EnvironmentManager | Cloud Noise → CloudNoise_v5.png |
 | GrassSpawner | GrassManager | Grass Material → MAT_Grass, terrain reference, density settings |
 
 ### Notes
@@ -273,18 +335,24 @@ These names are for your reference only — the important thing is assigning the
 
 ### Step 5 — Cloud Shadows
 1. Add `CloudShadowManager` component to any GameObject
-2. Assign your Directional Light
-3. Assign `CloudNoise_v5.png` (or any seamless noise texture)
-4. Recommended starting values: Scale 60, Contrast 3, Threshold 0.4, ShadowMin 0.3
+2. Assign `CloudNoise_v5.png` (or any seamless noise texture)
+3. Recommended starting values: Scale 60, Contrast 3, Threshold 0.4, ShadowMin 0.3
 
-### Step 6 — Create Toon Materials
+### Step 6 — Day/Night Cycle (Optional)
+1. Add `DayNightCycleManager` to your EnvironmentManager GameObject
+2. Assign your **Sun** (Directional Light) and **Moon** (secondary Directional Light)
+3. Assign the `CloudShadowManager` reference
+4. Configure gradients for `sunColor`, `moonColor`, and `ambientColor`
+5. Recommended starting values: `sunriseTime` 6, `sunsetTime` 18, `orbitAxisY` 45, `dayDurationInSeconds` 840
+
+### Step 7 — Create Toon Materials
 For each object material:
 1. Create a material with shader `Custom/ToonLit`
 2. Set `Base Color` to your desired flat color
 3. Set `Cuts` to 3 (three visible light bands)
 4. Adjust `Steepness` and `Wrap` to taste
 
-### Step 7 — Grass (Optional)
+### Step 8 — Grass (Optional)
 1. Create a material with shader `Custom/GrassBlade`
 2. Assign a grass sprite texture (alpha cutout PNG)
 3. Add `GrassSpawner` to your terrain
@@ -325,6 +393,18 @@ For each object material:
 | Use Pixel Snap | true | Enable pixel-perfect panning |
 | Pixel Renderer Feature | — | Drag your PixelRendererFeature asset here |
 
+### DayNightCycleManager
+
+| Parameter | Recommended | Description |
+|-----------|-------------|-------------|
+| `sunriseTime` | 6 | Sunrise hour (0–24) |
+| `sunsetTime` | 18 | Sunset hour (0–24) |
+| `orbitAxisY` | 45 | Aligns sun arc with isometric camera |
+| `maxSunIntensity` | 1.2 | Peak sun intensity |
+| `maxMoonIntensity` | 0.2 | Peak moon intensity |
+| `cloudShadowDirection` | (0.2, -1, 0.2) | Fixed cloud shadow direction |
+| `dayDurationInSeconds` | 840 | Full cycle duration in real seconds |
+
 ---
 
 ## Known Limitations
@@ -336,6 +416,10 @@ For each object material:
 3. **Grass excluded from depth/normals** — Adding DepthOnly/DepthNormals passes to the grass shader causes each blade to generate its own outline, creating visual noise. The grass intentionally remains invisible to the outline shader.
 
 4. **Not designed for PBR** — The pipeline assumes flat toon shading. PBR textures will produce noisy results at the internal resolution.
+
+5. **Cloud shadow pause/resume offset** — `_Time.y` continues advancing in the shader even when `isTimePassing = false`. Cloud shadows will resume at a different position. Fix requires a manual time accumulator in C#.
+
+6. **No palette blending per time of day** — Material colors don't change with the cycle. Only directional light color and ambient are affected.
 
 ---
 
