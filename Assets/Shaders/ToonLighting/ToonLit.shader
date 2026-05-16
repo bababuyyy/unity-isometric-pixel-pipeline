@@ -13,6 +13,7 @@ Shader "Custom/ToonLit"
         _Cuts ("Cuts", Range(1, 8)) = 3
         _Steepness ("Steepness", Range(1, 8)) = 1.0
         _Wrap ("Wrap", Range(-2.0, 2.0)) = 0.0
+       
         _ThresholdGradientSize ("Threshold Gradient Size", Range(0.0, 1.0)) = 0.2
         
         // Dithering.
@@ -28,6 +29,7 @@ Shader "Custom/ToonLit"
         _Color3 ("Color 3 (Patch)", Color) = (0.25, 0.45, 0.15, 1)
         _Noise3 ("Noise 3", 2D) = "white" {}
         _Noise3Scale ("Noise 3 Scale", Range(0.0, 0.1)) = 0.003
+ 
         _Noise3Threshold ("Noise 3 Threshold", Range(0.0, 1.0)) = 0.661
     }
     
@@ -38,6 +40,7 @@ Shader "Custom/ToonLit"
             "RenderType" = "Opaque" 
             "RenderPipeline" = "UniversalPipeline" 
             "Queue" = "Geometry" 
+       
         }
 
         Pass
@@ -58,10 +61,10 @@ Shader "Custom/ToonLit"
 
             struct Attributes
             {
+               
                 float4 positionOS : POSITION;
                 float3 normalOS   : NORMAL;
             };
-
             struct Varyings
             {
                 float4 positionHCS : SV_POSITION;
@@ -71,7 +74,6 @@ Shader "Custom/ToonLit"
 
             sampler2D _Noise2;
             sampler2D _Noise3;
-
             // Cloud Shadows Global Parameters.
             sampler2D _CloudNoise;
             float _CloudScale;
@@ -84,11 +86,12 @@ Shader "Custom/ToonLit"
             float _CloudDivergeAngle;
             float4 _CloudLightDirection;
             float _CloudPower;
+            
+            float4 _GlobalAmbientColor;
 
             // Unified CBUFFER for SRP Batcher.
             CBUFFER_START(UnityPerMaterial)
                 half4 _BaseColor;
-                
                 // Palette system variables.
                 half4 _HighlightColor;
                 half4 _MidtoneColor;
@@ -99,7 +102,6 @@ Shader "Custom/ToonLit"
                 float _Steepness;
                 float _Wrap;
                 float _ThresholdGradientSize;
-                
                 float _UseDither;
                 float _DitherStrength;
                 
@@ -127,26 +129,24 @@ Shader "Custom/ToonLit"
 
             float GetCloudNoise(float3 worldPos)
             {
+                // Guard: previne divisão por zero quando luz está no horizonte
+                if (abs(_CloudLightDirection.y) < 0.05f) return 1.0f;
+                
                 float t = (_CloudWorldY - worldPos.y) / _CloudLightDirection.y;
                 float3 hitPos = worldPos + t * _CloudLightDirection.xyz;
                 float invScale = 1.0 / _CloudScale;
                 
                 float2 cloudDir1 = RotateVec2(_CloudDirection.xy, _CloudDivergeAngle);
                 float2 cloudDir2 = RotateVec2(_CloudDirection.xy, -_CloudDivergeAngle);
-                
                 float2 cloudTimeDir1 = _Time.y * _CloudSpeed * normalize(cloudDir1);
                 float2 cloudTimeDir2 = _Time.y * _CloudSpeed * normalize(cloudDir2);
-                
                 float sample1 = tex2D(_CloudNoise, hitPos.xz * invScale + cloudTimeDir1).r;
                 float sample2 = tex2D(_CloudNoise, hitPos.xz * (invScale * 0.8) + (cloudTimeDir2 * 0.89 * 1.047)).r;
-
                 float cloudSample = sample1 * sample2;
                 float lightValue = saturate(cloudSample + _CloudThreshold);
-
                 lightValue = (lightValue - 0.5) * _CloudContrast + 0.5;
                 lightValue = clamp(lightValue + _CloudThreshold, _CloudShadowMin, 1.0);
                 lightValue = pow(lightValue, _CloudPower);
-
                 return lightValue;
             }
 
@@ -161,9 +161,9 @@ Shader "Custom/ToonLit"
                      0.0,  8.0,  2.0, 10.0,
                     12.0,  4.0, 14.0,  6.0,
                      3.0, 11.0,  1.0,  9.0,
+                  
                     15.0,  7.0, 13.0,  5.0
                 };
-
                 return bayer[y * 4 + x] / 16.0;
             }
 
@@ -188,13 +188,11 @@ Shader "Custom/ToonLit"
                 float3 normalWS = normalize(input.normalWS);
                 float4 shadowCoord = TransformWorldToShadowCoord(input.positionWS);
                 Light mainLight = GetMainLight(shadowCoord);
-
                 float diffuseAmount = dot(normalWS, mainLight.direction) + _Wrap;
                 diffuseAmount *= _Steepness;
 
                 float cloudLight = GetCloudNoise(input.positionWS);
                 diffuseAmount = min(diffuseAmount, cloudLight);
-
                 if (_UseDither > 0.5)
                 {
                     // Access screen pixel position directly via HCS clip space.
@@ -208,7 +206,6 @@ Shader "Custom/ToonLit"
 
                 float originalIndex = ceil(diffuseAmount * float(_Cuts));
                 float originalStepped = saturate(originalIndex * cut);
-
                 float diffuseStepped = saturate(diffuseAmount + GLSLMod(1.0 - diffuseAmount, cutsInv));
 
                 if (_ThresholdGradientSize > 0.0)
@@ -227,7 +224,6 @@ Shader "Custom/ToonLit"
                             blend = smoothstep(low, high, diffuseAmount);
                         else
                             blend = step(threshold, diffuseAmount);
-
                         float leftValue = threshold;
                         float rightValue = min(threshold + cut, 1.0);
                         diffuseStepped = lerp(leftValue, rightValue, blend);
@@ -249,7 +245,6 @@ Shader "Custom/ToonLit"
                     half3 paletteLow = _ShadowColor.rgb;
                     half3 paletteMid = albedo; // Albedo already includes patches.
                     half3 paletteHigh = _HighlightColor.rgb;
-                    
                     half3 paletteColor = albedo * lerp(_ShadowColor.rgb, _HighlightColor.rgb, lit);
                         
                     finalColor = paletteColor;
@@ -258,7 +253,7 @@ Shader "Custom/ToonLit"
                 {
                     // Preserve original behavior.
                     float3 finalLighting = diffuseStepped * mainLight.color * shadow;
-                    float3 ambient = float3(0.15, 0.15, 0.2);
+                    float3 ambient = _GlobalAmbientColor.rgb;
                     finalColor = albedo * (finalLighting + ambient);
                 }
 
@@ -274,6 +269,7 @@ Shader "Custom/ToonLit"
 
             HLSLPROGRAM
             #pragma vertex vert
+        
             #pragma fragment frag
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
@@ -292,7 +288,6 @@ Shader "Custom/ToonLit"
 
             CBUFFER_START(UnityPerMaterial)
                 half4 _BaseColor;
-                
                 half4 _HighlightColor;
                 half4 _MidtoneColor;
                 half4 _ShadowColor;
@@ -305,7 +300,6 @@ Shader "Custom/ToonLit"
                 
                 float _UseDither;
                 float _DitherStrength;
-                
                 half4 _Color2;
                 float _Noise2Scale;
                 float _Noise2Threshold;
@@ -316,7 +310,6 @@ Shader "Custom/ToonLit"
             CBUFFER_END
 
             float3 _LightDirection;
-
             Varyings vert(Attributes input)
             {
                 Varyings output;
@@ -340,6 +333,7 @@ Shader "Custom/ToonLit"
 
             HLSLPROGRAM
             #pragma vertex vert
+        
             #pragma fragment frag
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
@@ -356,7 +350,6 @@ Shader "Custom/ToonLit"
 
             CBUFFER_START(UnityPerMaterial)
                 half4 _BaseColor;
-                
                 half4 _HighlightColor;
                 half4 _MidtoneColor;
                 half4 _ShadowColor;
@@ -369,7 +362,6 @@ Shader "Custom/ToonLit"
                 
                 float _UseDither;
                 float _DitherStrength;
-                
                 half4 _Color2;
                 float _Noise2Scale;
                 float _Noise2Threshold;
@@ -400,6 +392,7 @@ Shader "Custom/ToonLit"
 
             HLSLPROGRAM
             #pragma vertex vert
+        
             #pragma fragment frag
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
@@ -418,7 +411,6 @@ Shader "Custom/ToonLit"
 
             CBUFFER_START(UnityPerMaterial)
                 half4 _BaseColor;
-                
                 half4 _HighlightColor;
                 half4 _MidtoneColor;
                 half4 _ShadowColor;
@@ -431,7 +423,6 @@ Shader "Custom/ToonLit"
                 
                 float _UseDither;
                 float _DitherStrength;
-                
                 half4 _Color2;
                 float _Noise2Scale;
                 float _Noise2Threshold;

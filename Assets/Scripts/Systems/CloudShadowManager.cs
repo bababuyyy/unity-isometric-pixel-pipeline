@@ -48,13 +48,12 @@ public class CloudShadowManager : MonoBehaviour
         _cloudNoiseId = Shader.PropertyToID("_CloudNoise");
         _cloudScaleId = Shader.PropertyToID("_CloudScale");
         _cloudWorldYId = Shader.PropertyToID("_CloudWorldY");
-        _cloudSpeedId = Shader.PropertyToID("_CloudSpeed");
+        _cloudSpeedId = Shader.PropertyToID("_CloudSpeed"); // Mantido conforme constraint
         _cloudContrastId = Shader.PropertyToID("_CloudContrast");
         _cloudThresholdId = Shader.PropertyToID("_CloudThreshold");
         _cloudDirectionId = Shader.PropertyToID("_CloudDirection");
         _cloudShadowMinId = Shader.PropertyToID("_CloudShadowMin");
         _cloudDivergeAngleId = Shader.PropertyToID("_CloudDivergeAngle");
-        _cloudLightDirectionId = Shader.PropertyToID("_CloudLightDirection");
         _cloudPowerId = Shader.PropertyToID("_CloudPower");
     }
 
@@ -68,7 +67,7 @@ public class CloudShadowManager : MonoBehaviour
         // Assign global floats.
         Shader.SetGlobalFloat(_cloudScaleId, cloudScale);
         Shader.SetGlobalFloat(_cloudWorldYId, cloudWorldY);
-        Shader.SetGlobalFloat(_cloudSpeedId, cloudSpeed);
+        // A responsabilidade do _CloudSpeed agora é do DayNightCycleManager
         Shader.SetGlobalFloat(_cloudContrastId, cloudContrast);
         Shader.SetGlobalFloat(_cloudThresholdId, cloudThreshold);
         Shader.SetGlobalFloat(_cloudShadowMinId, cloudShadowMin);
@@ -77,9 +76,5 @@ public class CloudShadowManager : MonoBehaviour
 
         // Assign global vectors.
         Shader.SetGlobalVector(_cloudDirectionId, new Vector4(cloudDirection.x, cloudDirection.y, 0, 0));
-        
-        // Invert light direction to point from the object to the sky.
-        Vector3 lightDir = -directionalLight.transform.forward;
-        Shader.SetGlobalVector(_cloudLightDirectionId, new Vector4(lightDir.x, lightDir.y, lightDir.z, 0));
     }
 }

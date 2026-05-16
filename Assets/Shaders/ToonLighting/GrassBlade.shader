@@ -9,6 +9,7 @@ Shader "Custom/GrassBlade"
         _Color2 ("Color 2 (Patch)", Color) = (0.3, 0.5, 0.2, 1)
         _Noise2 ("Noise 2", 2D) = "white" {}
         _Noise2Scale ("Noise 2 Scale", Range(0.0, 1.0)) = 0.005
+ 
         _Noise2Threshold ("Noise 2 Threshold", Range(0.0, 1.0)) = 0.604
 
         _Color3 ("Color 3 (Patch)", Color) = (0.25, 0.45, 0.15, 1)
@@ -17,14 +18,16 @@ Shader "Custom/GrassBlade"
         _Noise3Threshold ("Noise 3 Threshold", Range(0.0, 1.0)) = 0.661
 
         _AccentTexture1 ("Accent 1 Sprite", 2D) = "white" {}
-        _AccentColor1 ("Accent 1 Color", Color) = (0.4, 0.6, 0.1, 1)
+        _AccentColor1 ("Accent 
+1 Color", Color) = (0.4, 0.6, 0.1, 1)
         _AccentFrequency1 ("Accent 1 Frequency", Range(0.0, 0.05)) = 0.001
         _AccentHeight1 ("Accent 1 Height Offset", Range(0.0, 1.0)) = 0.5
         _AccentScale1 ("Accent 1 Scale", Range(0.0, 2.0)) = 1.0
 
         _AccentTexture2 ("Accent 2 Sprite", 2D) = "white" {}
         _AccentColor2 ("Accent 2 Color", Color) = (0.5, 0.7, 0.15, 1)
-        _AccentFrequency2 ("Accent 2 Frequency", Range(0.0, 0.05)) = 0.1
+        _AccentFrequency2 ("Accent 2 Frequency", Range(0.0, 0.05)) = 
+0.1
         _AccentHeight2 ("Accent 2 Height Offset", Range(0.0, 1.0)) = 0.5
         _AccentScale2 ("Accent 2 Scale", Range(0.0, 2.0)) = 1.0
 
@@ -34,6 +37,7 @@ Shader "Custom/GrassBlade"
         _ThresholdGradientSize ("Threshold Gradient Size", Range(0.0, 1.0)) = 0.2
 
         _WindNoise ("Wind Noise", 2D) = "gray" {}
+ 
         _WindNoiseScale ("Wind Noise Scale", Range(0.0, 0.2)) = 0.071
         _WindNoiseSpeed ("Wind Noise Speed", Range(0.0, 0.2)) = 0.025
         _WindNoiseThreshold ("Wind Noise Threshold", Range(-1.0, 1.0)) = 0.365
@@ -41,6 +45,7 @@ Shader "Custom/GrassBlade"
         _WindSwayAngle ("Wind Sway Angle (degrees)", Range(0.0, 180.0)) = 60.0
         _NoiseDivergeAngle ("Noise Diverge Angle (degrees)", Range(0.0, 45.0)) = 10.0
         
+
         _FakePerspectiveScale ("Fake Perspective Scale", Range(-0.15, 0.6)) = 0.3
         
         [Toggle] _UseDither ("Use Dither", Float) = 0
@@ -52,6 +57,7 @@ Shader "Custom/GrassBlade"
         Tags 
         { 
             "RenderType" = "TransparentCutout" 
+    
             "RenderPipeline" = "UniversalPipeline" 
             "Queue" = "AlphaTest" 
             "DisableBatching" = "True" 
@@ -61,6 +67,7 @@ Shader "Custom/GrassBlade"
         {
             Name "ForwardLit"
             Tags { "LightMode" = "UniversalForward" }
+     
             
             Cull Off 
 
@@ -70,6 +77,7 @@ Shader "Custom/GrassBlade"
 
             #pragma multi_compile_instancing
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
+         
             #pragma multi_compile _ _SHADOWS_SOFT
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl" 
@@ -81,7 +89,6 @@ Shader "Custom/GrassBlade"
                 float2 uv         : TEXCOORD0;
                 UNITY_VERTEX_INPUT_INSTANCE_ID 
             };
-
             struct Varyings
             {
                 float4 positionHCS : SV_POSITION;
@@ -112,6 +119,8 @@ Shader "Custom/GrassBlade"
             float _CloudDivergeAngle;
             float4 _CloudLightDirection;
             float _CloudPower;
+            
+            float4 _GlobalAmbientColor;
 
             CBUFFER_START(UnityPerMaterial)
                 half4 _BaseColor;
@@ -183,6 +192,7 @@ Shader "Custom/GrassBlade"
                      0.0,  8.0,  2.0, 10.0,
                     12.0,  4.0, 14.0,  6.0,
                      3.0, 11.0,  1.0,  9.0,
+               
                     15.0,  7.0, 13.0,  5.0
                 };
                 return bayer[y * 4 + x] / 16.0;
@@ -190,6 +200,9 @@ Shader "Custom/GrassBlade"
 
             float GetCloudNoise(float3 worldPos)
             {
+                // Guard: previne divisão por zero quando luz está no horizonte
+                if (abs(_CloudLightDirection.y) < 0.05f) return 1.0f;
+                
                 float t = (_CloudWorldY - worldPos.y) / _CloudLightDirection.y;
                 float3 hitPos = worldPos + t * _CloudLightDirection.xyz;
                 float invScale = 1.0 / _CloudScale;
@@ -291,7 +304,6 @@ Shader "Custom/GrassBlade"
                 uv.x *= uv.y * fpSample + 1.0;
                 uv.x += 0.5;
                 uv.x = clamp(uv.x, 0.0, 1.0);
-
                 half4 spriteColor; 
                 half3 albedo;
                 if (input.seeds.x < _AccentFrequency1)
@@ -328,7 +340,6 @@ Shader "Custom/GrassBlade"
 
                 float cloudLight = GetCloudNoise(input.instancePosWS);
                 diffuseAmount = min(diffuseAmount, cloudLight);
-
                 // Apply Bayer Dithering.
                 if (_UseDither > 0.5)
                 {
@@ -344,7 +355,6 @@ Shader "Custom/GrassBlade"
                 float originalIndex = ceil(diffuseAmount * float(_Cuts));
                 float originalStepped = saturate(originalIndex * cut);
                 float diffuseStepped = saturate(diffuseAmount + GLSLMod(1.0 - diffuseAmount, cutsInv));
-
                 if (_ThresholdGradientSize > 0.0)
                 {
                     float nearestK = floor(diffuseAmount / cut + 0.5);
@@ -373,7 +383,7 @@ Shader "Custom/GrassBlade"
                 }
 
                 float3 finalLighting = diffuseStepped * mainLight.color * mainLight.shadowAttenuation;
-                float3 ambient = float3(0.15, 0.15, 0.2);
+                float3 ambient = _GlobalAmbientColor.rgb;
                 half3 finalColor = albedo * (finalLighting + ambient); 
                 return half4(finalColor, 1.0);
             } 
@@ -387,6 +397,7 @@ Shader "Custom/GrassBlade"
             
             Cull Off
 
+        
             HLSLPROGRAM 
             #pragma vertex vert
             #pragma fragment frag
@@ -396,7 +407,8 @@ Shader "Custom/GrassBlade"
 
             struct Attributes
             {
-                float4 positionOS : POSITION;
+   
+                 float4 positionOS : POSITION;
                 float2 uv         : TEXCOORD0;
                 UNITY_VERTEX_INPUT_INSTANCE_ID 
             };
