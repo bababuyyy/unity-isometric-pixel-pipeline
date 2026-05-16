@@ -117,6 +117,8 @@ Upscales from internal resolution to screen resolution.
 
 ## Day/Night Cycle
 
+https://github.com/user-attachments/assets/c3f1c248-9554-4c48-9f8b-f6d56a40e7ac
+
 The cycle is managed by two scripts with separate responsibilities.
 
 **`DayNightCycleManager`** — single source of truth for time. Controls sun/moon orbit rotation, light intensity and color via dot product, global ambient, and cloud shadow direction. Sets GPU globals directly via `Shader.SetGlobalColor`, `Shader.SetGlobalVector`, and `Shader.SetGlobalFloat`.
